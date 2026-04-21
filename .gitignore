@@ -1,0 +1,29 @@
+# Cabal build directories and artifacts
+dist/
+dist-newstyle/
+cabal-dev/
+*.cabal.project.local
+*.cabal.project.local~
+.cabal-sandbox/
+cabal.sandbox.config
+
+# GHC compiler outputs
+*.o
+*.hi
+*.hie
+*.chi
+*.chs.h
+*.dyn_o
+*.dyn_hi
+
+# Profiling and coverage
+*.prof
+*.hp
+*.eventlog
+.hpc/
+
+# IDEs and Editors
+.vscode/
+
+# OS specific (Windows)
+Thumbs.db
