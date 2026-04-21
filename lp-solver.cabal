@@ -61,7 +61,10 @@ library
     exposed-modules:  MyLib
 
     -- Modules included in this library but not exported.
-    -- other-modules:
+    other-modules:
+        LPSolver.Types,
+        LPSolver.Parser,
+        LPSolver.Simplex
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
