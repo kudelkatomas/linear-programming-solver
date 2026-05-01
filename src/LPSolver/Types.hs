@@ -1,6 +1,6 @@
 module LPSolver.Types where
 
-import Data.Matrix (Matrix, getCol, getRow, ncols, nrows)
+import Data.Matrix (Matrix (..), getCol, getRow)
 import Data.Vector (Vector)
 
 ------------------------------------------------------------------------------------------
@@ -16,9 +16,6 @@ data LPInstance = LPInstance
 
 -- | Simplex algorithm tableau
 type Tableau = Matrix Rational
-
--- | Simplex algorithm tableau row or column
-data TableauVector = Row (Vector Rational) | Column (Vector Rational)
 
 getLastColumn :: Tableau -> Vector Rational
 getLastColumn tbl = getCol (ncols tbl) tbl

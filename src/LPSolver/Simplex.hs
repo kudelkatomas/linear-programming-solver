@@ -18,8 +18,9 @@ import LPSolver.Types (LPInstance (..), Tableau, getLastColumn, getLastRow)
 
 ------------------------------------------------------------------------------------------
 
-inst :: LPInstance
-inst =
+-- For testing purposes
+testInst :: LPInstance
+testInst =
   LPInstance
     { matA =
         [ [1, 1, 3],
@@ -30,6 +31,8 @@ inst =
       vecC = [-3, -1, -2]
     }
 
+------------------------------------------------------------------------------------------
+
 -- | Combines matA, vecB, vecC and an identity matrix to build the tableau
 buildTableau :: LPInstance -> Tableau
 buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
@@ -38,10 +41,11 @@ buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
     aNRows = nrows aMat
     cWithZeros = c ++ replicate aNRows 0
     bWithZero = fromList (length b + 1) 1 (b ++ [0])
-    aIdentityC = (aMat <|> identity aNRows) <-> fromList 1 (length c + aNRows) cWithZeros
+    aIdentityC =
+      (aMat <|> identity aNRows) <-> fromList 1 (length c + aNRows) cWithZeros
 
 {-
->>> buildTableau inst
+>>> buildTableau testInst
 ┌                                                                ┐
 │    1 % 1    1 % 1    3 % 1    1 % 1    0 % 1    0 % 1   30 % 1 │
 │    2 % 1    2 % 1    5 % 1    0 % 1    1 % 1    0 % 1   24 % 1 │
@@ -77,13 +81,13 @@ findPivotPos tbl =
     return (col, row)
 
 {-
->>> findPivotPos $ buildTableau inst
+>>> findPivotPos $ buildTableau testInst
 Just (1,3)
 -}
 
 ------------------------------------------------------------------------------------------
 
--- | Pivot around the pivot element
+-- | Given the pivot's coordinates (column, row) performs one tableau update
 updateTableau :: Tableau -> (Int, Int) -> Tableau
 updateTableau tbl (col, row) = foldl updateRow scaledTbl targetRows
   where
@@ -98,7 +102,7 @@ updateTableau tbl (col, row) = foldl updateRow scaledTbl targetRows
 updateTableauTest :: Maybe Tableau
 updateTableauTest =
   do
-    let tbl = buildTableau inst
+    let tbl = buildTableau testInst
     pos <- findPivotPos tbl
     return $ updateTableau tbl pos
 
@@ -124,7 +128,7 @@ simplex ins = helper $ buildTableau ins
         Just pivotPos -> helper $ updateTableau tbl pivotPos
 
 {-
->>> simplex inst
+>>> simplex testInst
 ┌                                                                ┐
 │    0 % 1    0 % 1    1 % 2    1 % 1 (-1) % 2    0 % 1   18 % 1 │
 │    0 % 1    1 % 1    8 % 3    0 % 1    2 % 3 (-1) % 3    4 % 1 │
