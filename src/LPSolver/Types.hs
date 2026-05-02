@@ -17,8 +17,8 @@ data LPInstance = LPInstance
 -- | Simplex algorithm tableau
 type Tableau = Matrix Rational
 
-getLastColumn :: Tableau -> Vector Rational
-getLastColumn tbl = getCol (ncols tbl) tbl
+getLastCol :: Tableau -> Vector Rational
+getLastCol tbl = getCol (ncols tbl) tbl
 
 getLastRow :: Tableau -> Vector Rational
 getLastRow tbl = getRow (nrows tbl) tbl

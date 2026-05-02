@@ -1,7 +1,8 @@
 module LPSolver.Simplex where
 
 import Data.Matrix
-  ( combineRows,
+  ( Matrix (ncols),
+    combineRows,
     fromList,
     fromLists,
     getCol,
@@ -13,8 +14,8 @@ import Data.Matrix
     (<|>),
   )
 import Data.Ratio ((%))
-import Data.Vector (maxIndex, minIndex, zipWith, (!))
-import LPSolver.Types (LPInstance (..), Tableau, getLastColumn, getLastRow)
+import Data.Vector (Vector, maxIndex, minIndex, toList, zipWith, (!))
+import LPSolver.Types (LPInstance (..), Tableau, getLastCol, getLastRow)
 
 ------------------------------------------------------------------------------------------
 
@@ -33,7 +34,7 @@ testInst =
 
 ------------------------------------------------------------------------------------------
 
--- | Combines matA, vecB, vecC and an identity matrix to build the tableau
+-- | Combines matA, vecB, vecC and an identity matrix into a tableau
 buildTableau :: LPInstance -> Tableau
 buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
   where
@@ -69,7 +70,7 @@ findPivotRowIndex tbl pivotColIdx = ratios ! minIdx >> Just (minIdx + 1)
     ratiosDiv :: Rational -> Rational -> Maybe Rational
     ratiosDiv n d = if d > 0 then Just (n / (-d)) else Nothing
 
-    ratios = Data.Vector.zipWith ratiosDiv (getLastColumn tbl) (getCol pivotColIdx tbl)
+    ratios = Data.Vector.zipWith ratiosDiv (getLastCol tbl) (getCol pivotColIdx tbl)
     minIdx = maxIndex ratios
 
 -- | Finds pivot coordinates (column, row) indexed from 1
@@ -135,4 +136,31 @@ simplex ins = helper $ buildTableau ins
 │    1 % 1    0 % 1 (-1) % 6    0 % 1 (-1) % 6    1 % 3    8 % 1 │
 │    0 % 1    0 % 1    1 % 6    0 % 1    1 % 6    2 % 3   28 % 1 │
 └                                                                ┘
+-}
+
+------------------------------------------------------------------------------------------
+
+-- | Extracts solution vector [x_1, ..., x_n, objective function] from tableau
+solutionVector :: Tableau -> [Rational]
+solutionVector tbl = [if i /= -1 then lastCol ! i else 0 | i <- basicRowIndices]
+  where
+    lastCol = getLastCol tbl
+
+    basicRowIndices =
+      [findBasicRowIndex $ getCol i tbl | i <- [1 .. ncols tbl]]
+        ++ [nrows tbl - 1] -- for the value of the objective function
+
+    -- -1 if given vector is not basic, otherwise the index of the row with the one
+    findBasicRowIndex :: Vector Rational -> Int
+    findBasicRowIndex col = foldl step (-2) (zip [(0 :: Int) ..] $ toList col)
+
+    step :: Int -> (Int, Rational) -> Int
+    step (-1) _ = -1
+    step (-2) (i, 1) = i
+    step j (_, 0) = j
+    step _ _ = -1
+
+{-
+>>> solutionVector $ simplex testInst
+[8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,0 % 1,28 % 1]
 -}
