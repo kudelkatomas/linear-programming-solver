@@ -29,7 +29,7 @@ testInst =
           [4, 1, 2]
         ],
       vecB = [30, 24, 36],
-      vecC = [-3, -1, -2]
+      vecC = [3, 1, 2]
     }
 
 ------------------------------------------------------------------------------------------
@@ -40,7 +40,7 @@ buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
   where
     aMat = fromLists a
     aNRows = nrows aMat
-    cWithZeros = c ++ replicate aNRows 0
+    cWithZeros = fmap (* (-1)) c ++ replicate aNRows 0
     bWithZero = fromList (length b + 1) 1 (b ++ [0])
     aIdentityC =
       (aMat <|> identity aNRows) <-> fromList 1 (length c + aNRows) cWithZeros
@@ -61,17 +61,22 @@ findPivotColumnIndex :: Tableau -> Maybe Int
 findPivotColumnIndex tbl = if lastRow ! minIdx < 0 then Just (minIdx + 1) else Nothing
   where
     lastRow = getLastRow tbl
+
+    -- Bland's rule is NOT followed
     minIdx = minIndex lastRow
 
 findPivotRowIndex :: Tableau -> Int -> Maybe Int
 findPivotRowIndex tbl pivotColIdx = ratios ! minIdx >> Just (minIdx + 1)
   where
     -- Nothing < Just _, therefore ratios multiplied by -1 and maxIndex
-    ratiosDiv :: Rational -> Rational -> Maybe Rational
-    ratiosDiv n d = if d > 0 then Just (n / (-d)) else Nothing
 
-    ratios = Data.Vector.zipWith ratiosDiv (getLastCol tbl) (getCol pivotColIdx tbl)
+    ratios = Data.Vector.zipWith safeNegRatio (getLastCol tbl) (getCol pivotColIdx tbl)
+
+    -- Bland's rule is NOT followed
     minIdx = maxIndex ratios
+
+    safeNegRatio :: Rational -> Rational -> Maybe Rational
+    safeNegRatio n d = if d > 0 then Just (n / (-d)) else Nothing
 
 -- | Finds pivot coordinates (column, row) indexed from 1
 findPivotPos :: Tableau -> Maybe (Int, Int)
@@ -141,8 +146,8 @@ simplex ins = helper $ buildTableau ins
 ------------------------------------------------------------------------------------------
 
 -- | Extracts solution vector [x_1, ..., x_n, objective function] from tableau
-solutionVector :: Tableau -> [Rational]
-solutionVector tbl = [if i /= -1 then lastCol ! i else 0 | i <- basicRowIndices]
+getSolutionVector :: Tableau -> [Rational]
+getSolutionVector tbl = [if i /= -1 then lastCol ! i else 0 | i <- basicRowIndices]
   where
     lastCol = getLastCol tbl
 
@@ -161,6 +166,6 @@ solutionVector tbl = [if i /= -1 then lastCol ! i else 0 | i <- basicRowIndices]
     step _ _ = -1
 
 {-
->>> solutionVector $ simplex testInst
+>>> getSolutionVector $ simplex testInst
 [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,0 % 1,28 % 1]
 -}

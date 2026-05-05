@@ -24,3 +24,9 @@ getLastRow :: Tableau -> Vector Rational
 getLastRow tbl = getRow (nrows tbl) tbl
 
 ------------------------------------------------------------------------------------------
+
+-- | Simplex algorithm state
+data SimplexState = SimplexState
+  { tableau :: Tableau,
+    basicColsIndices :: [Int]
+  }
