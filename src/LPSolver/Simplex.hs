@@ -14,8 +14,24 @@ import Data.Matrix
     (<|>),
   )
 import Data.Ratio ((%))
-import Data.Vector (Vector, maxIndex, minIndex, toList, zipWith, (!))
-import LPSolver.Types (LPInstance (..), Tableau, getLastCol, getLastRow)
+import qualified Data.Vector as V
+  ( Vector,
+    findIndex,
+    fromList,
+    init,
+    maxIndex,
+    toList,
+    zipWith,
+    (!),
+  )
+import LPSolver.Types
+  ( LPInstance (..),
+    SimplexResult (..),
+    SimplexState (..),
+    Tableau,
+    getLastCol,
+    getLastRow,
+  )
 
 ------------------------------------------------------------------------------------------
 
@@ -35,8 +51,12 @@ testInst =
 ------------------------------------------------------------------------------------------
 
 -- | Combines matA, vecB, vecC and an identity matrix into a tableau
-buildTableau :: LPInstance -> Tableau
-buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
+buildTableau :: LPInstance -> SimplexState
+buildTableau (LPInstance a b c) =
+  SimplexState
+    { tableau = (% 1) <$> aIdentityC <|> bWithZero,
+      basicColsIndices = basicColsIndices'
+    }
   where
     aMat = fromLists a
     aNRows = nrows aMat
@@ -44,9 +64,11 @@ buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
     bWithZero = fromList (length b + 1) 1 (b ++ [0])
     aIdentityC =
       (aMat <|> identity aNRows) <-> fromList 1 (length c + aNRows) cWithZeros
+    basicColsIndices' = V.fromList [aNRows + i | i <- [1 .. aNRows]]
 
 {-
 >>> buildTableau testInst
+Basic Column Indices: [4,5,6]
 ┌                                                                ┐
 │    1 % 1    1 % 1    3 % 1    1 % 1    0 % 1    0 % 1   30 % 1 │
 │    2 % 1    2 % 1    5 % 1    0 % 1    1 % 1    0 % 1   24 % 1 │
@@ -57,60 +79,55 @@ buildTableau (LPInstance a b c) = (% 1) <$> aIdentityC <|> bWithZero
 
 ------------------------------------------------------------------------------------------
 
+-- | Finds pivot's column index following the Bland's rule or
+--   Nothing if every c_j \<= 0 (i.e. -c_j \>=0)
 findPivotColumnIndex :: Tableau -> Maybe Int
-findPivotColumnIndex tbl = if lastRow ! minIdx < 0 then Just (minIdx + 1) else Nothing
+findPivotColumnIndex = helper . getLastRow
   where
-    lastRow = getLastRow tbl
+    helper :: V.Vector Rational -> Maybe Int
+    helper lastRow = (+ 1) <$> V.findIndex (< 0) (V.init lastRow)
 
-    -- Bland's rule is NOT followed
-    minIdx = minIndex lastRow
-
-findPivotRowIndex :: Tableau -> Int -> Maybe Int
-findPivotRowIndex tbl pivotColIdx = ratios ! minIdx >> Just (minIdx + 1)
+-- | Finds pivot's row index following the Bland's rule or
+--   Nothing if a_{column, row_i} \<= 0 for every i
+findPivotRowIndex :: SimplexState -> Int -> Maybe Int
+findPivotRowIndex (SimplexState tab basicColsIndices) pivotColIdx =
+  ratios V.! minIdx >> Just (minIdx + 1)
   where
+    -- Drop the last row
+    b = V.init $ getLastCol tab
+    col = V.init $ getCol pivotColIdx tab
+
     -- Nothing < Just _, therefore ratios multiplied by -1 and maxIndex
-
-    ratios = Data.Vector.zipWith safeNegRatio (getLastCol tbl) (getCol pivotColIdx tbl)
+    ratios = V.zipWith safeNegRatio b col
 
     -- Bland's rule is NOT followed
-    minIdx = maxIndex ratios
+    minIdx = V.maxIndex ratios
 
     safeNegRatio :: Rational -> Rational -> Maybe Rational
     safeNegRatio n d = if d > 0 then Just (n / (-d)) else Nothing
 
--- | Finds pivot coordinates (column, row) indexed from 1
-findPivotPos :: Tableau -> Maybe (Int, Int)
-findPivotPos tbl =
-  do
-    col <- findPivotColumnIndex tbl
-    row <- findPivotRowIndex tbl col
-    return (col, row)
-
-{-
->>> findPivotPos $ buildTableau testInst
-Just (1,3)
--}
+    ratiosMax = undefined
 
 ------------------------------------------------------------------------------------------
 
 -- | Given the pivot's coordinates (column, row) performs one tableau update
-updateTableau :: Tableau -> (Int, Int) -> Tableau
-updateTableau tbl (col, row) = foldl updateRow scaledTbl targetRows
+updateTableau :: SimplexState -> (Int, Int) -> SimplexState
+updateTableau tab (col, row) = foldl updateRow scaledTab targetRows
   where
-    targetRows = [i | i <- [1 .. nrows tbl], i /= row]
-    scaledTbl =
-      let pivot = getElem row col tbl
-       in scaleRow (1 / pivot) row tbl
+    targetRows = [i | i <- [1 .. nrows tab], i /= row]
+    scaledTab =
+      let pivot = getElem row col tab
+       in scaleRow (1 / pivot) row tab
 
     updateRow :: Tableau -> Int -> Tableau
-    updateRow tbl' rowIdx = combineRows rowIdx (-(getElem rowIdx col tbl')) row tbl'
+    updateRow tab' rowIdx = combineRows rowIdx (-(getElem rowIdx col tab')) row tab'
 
 updateTableauTest :: Maybe Tableau
 updateTableauTest =
   do
-    let tbl = buildTableau testInst
-    pos <- findPivotPos tbl
-    return $ updateTableau tbl pos
+    let tab = buildTableau testInst
+    pos <- findPivotPos tab
+    return $ updateTableau tab pos
 
 {-
 >>> updateTableauTest
@@ -124,40 +141,19 @@ Just ┌                                                                ┐
 
 ------------------------------------------------------------------------------------------
 
-simplex :: LPInstance -> Tableau
-simplex ins = helper $ buildTableau ins
-  where
-    helper :: Tableau -> Tableau
-    helper tbl =
-      case findPivotPos tbl of
-        Nothing -> tbl
-        Just pivotPos -> helper $ updateTableau tbl pivotPos
-
-{-
->>> simplex testInst
-┌                                                                ┐
-│    0 % 1    0 % 1    1 % 2    1 % 1 (-1) % 2    0 % 1   18 % 1 │
-│    0 % 1    1 % 1    8 % 3    0 % 1    2 % 3 (-1) % 3    4 % 1 │
-│    1 % 1    0 % 1 (-1) % 6    0 % 1 (-1) % 6    1 % 3    8 % 1 │
-│    0 % 1    0 % 1    1 % 6    0 % 1    1 % 6    2 % 3   28 % 1 │
-└                                                                ┘
--}
-
-------------------------------------------------------------------------------------------
-
 -- | Extracts solution vector [x_1, ..., x_n, objective function] from tableau
-getSolutionVector :: Tableau -> [Rational]
-getSolutionVector tbl = [if i /= -1 then lastCol ! i else 0 | i <- basicRowIndices]
+getSolutionVector :: Tableau -> V.Vector Rational
+getSolutionVector tab = [if i /= -1 then lastCol V.! i else 0 | i <- basicRowIndices]
   where
-    lastCol = getLastCol tbl
+    lastCol = getLastCol tab
 
     basicRowIndices =
-      [findBasicRowIndex $ getCol i tbl | i <- [1 .. ncols tbl]]
-        ++ [nrows tbl - 1] -- for the value of the objective function
+      [findBasicRowIndex $ getCol i tab | i <- [1 .. ncols tab]]
+        ++ [nrows tab - 1] -- for the value of the objective function
 
     -- -1 if given vector is not basic, otherwise the index of the row with the one
-    findBasicRowIndex :: Vector Rational -> Int
-    findBasicRowIndex col = foldl step (-2) (zip [(0 :: Int) ..] $ toList col)
+    findBasicRowIndex :: V.Vector Rational -> Int
+    findBasicRowIndex col = foldl step (-2) (zip [(0 :: Int) ..] $ V.toList col)
 
     step :: Int -> (Int, Rational) -> Int
     step (-1) _ = -1
@@ -168,4 +164,33 @@ getSolutionVector tbl = [if i /= -1 then lastCol ! i else 0 | i <- basicRowIndic
 {-
 >>> getSolutionVector $ simplex testInst
 [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,0 % 1,28 % 1]
+-}
+
+------------------------------------------------------------------------------------------
+
+simplex :: LPInstance -> SimplexResult
+simplex ins = maybe Infeasible solver initSimplex
+  where
+    -- DOPSAT DOKUMENTACI
+    initSimplex :: Maybe SimplexState
+    initSimplex = Just $ buildTableau ins
+
+    solver :: SimplexState -> SimplexResult
+    solver state@(SimplexState tab _) =
+      case findPivotColumnIndex tab of
+        Nothing -> Optimal tab $ getSolutionVector tab
+        Just pivotCol ->
+          case findPivotRowIndex state pivotCol of
+            Nothing -> FeasibleUnbounded
+            Just pivotRow ->
+              solver $ updateTableau state (pivotCol, pivotRow)
+
+{-
+>>> simplex testInst
+┌                                                                ┐
+│    0 % 1    0 % 1    1 % 2    1 % 1 (-1) % 2    0 % 1   18 % 1 │
+│    0 % 1    1 % 1    8 % 3    0 % 1    2 % 3 (-1) % 3    4 % 1 │
+│    1 % 1    0 % 1 (-1) % 6    0 % 1 (-1) % 6    1 % 3    8 % 1 │
+│    0 % 1    0 % 1    1 % 6    0 % 1    1 % 6    2 % 3   28 % 1 │
+└                                                                ┘
 -}

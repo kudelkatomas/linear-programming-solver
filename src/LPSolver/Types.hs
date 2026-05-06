@@ -1,3 +1,5 @@
+{-# LANGUAGE InstanceSigs #-}
+
 module LPSolver.Types where
 
 import Data.Matrix (Matrix (..), getCol, getRow)
@@ -25,8 +27,23 @@ getLastRow tbl = getRow (nrows tbl) tbl
 
 ------------------------------------------------------------------------------------------
 
+-- | Simplex algorithm result is of this type
+data SimplexResult = FeasibleUnbounded | Infeasible | Optimal Tableau (Vector Rational)
+
+------------------------------------------------------------------------------------------
+
 -- | Simplex algorithm state
 data SimplexState = SimplexState
   { tableau :: Tableau,
-    basicColsIndices :: [Int]
+    -- size basicColsIndices = nrows tableau - 1
+    -- basicColsIndices ! i = index of the column of the respective basic variable
+    basicColsIndices :: Vector Int
   }
+
+instance Show SimplexState where
+  show :: SimplexState -> String
+  show (SimplexState tab indices) =
+    "Basic Column Indices: "
+      ++ show indices
+      ++ "\n"
+      ++ show tab
