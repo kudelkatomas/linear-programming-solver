@@ -28,11 +28,15 @@ getLastRow tbl = getRow (nrows tbl) tbl
 ------------------------------------------------------------------------------------------
 
 -- | Simplex algorithm result is of this type
-data SimplexResult = FeasibleUnbounded | Infeasible | Optimal Tableau (Vector Rational)
+data SimplexResult
+  = FeasibleUnbounded
+  | Infeasible
+  | Optimal Tableau (Vector Rational)
+  deriving (Show)
 
 ------------------------------------------------------------------------------------------
 
--- | Simplex algorithm state
+-- | Simplex algorithm state, basicColsIndices are indexed from 1
 data SimplexState = SimplexState
   { tableau :: Tableau,
     -- size basicColsIndices = nrows tableau - 1
