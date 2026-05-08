@@ -32,7 +32,16 @@ data SimplexResult
   = FeasibleUnbounded
   | Infeasible
   | Optimal Tableau (Vector Rational)
-  deriving (Show)
+
+instance Show SimplexResult where
+  show :: SimplexResult -> String
+  show FeasibleUnbounded = "Feasible Unbound"
+  show Infeasible = "Infeasible"
+  show (Optimal tab sol) =
+    "Solution Vector: "
+      ++ show sol
+      ++ "\n"
+      ++ show tab
 
 ------------------------------------------------------------------------------------------
 

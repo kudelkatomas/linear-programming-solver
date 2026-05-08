@@ -22,10 +22,10 @@ import qualified Data.Vector as V
     init,
     last,
     maxIndex,
-    toList,
     zip,
     zipWith,
     (!),
+    (//),
   )
 import LPSolver.Types
   ( LPInstance (..),
@@ -122,29 +122,33 @@ Just (1,3)
 ------------------------------------------------------------------------------------------
 
 -- | Given the pivot's coordinates (column, row) performs one tableau update
-updateTableau :: SimplexState -> (Int, Int) -> SimplexState
-updateTableau = undefined
+updateSimplexState :: SimplexState -> (Int, Int) -> SimplexState
+updateSimplexState (SimplexState tab basicColsIdxs) (col, row) =
+  SimplexState
+    { tableau = foldl updateRow scaledTab targetRows,
+      basicColsIndices = basicColsIdxs V.// [(row - 1, col)]
+    }
+  where
+    targetRows = [i | i <- [1 .. nrows tab], i /= row]
+    scaledTab =
+      let pivot = getElem row col tab
+       in scaleRow (1 / pivot) row tab
 
--- updateTableau tab (col, row) = foldl updateRow scaledTab targetRows
---   where
---     targetRows = [i | i <- [1 .. nrows tab], i /= row]
---     scaledTab =
---       let pivot = getElem row col tab
---        in scaleRow (1 / pivot) row tab
+    updateRow :: Tableau -> Int -> Tableau
+    updateRow tab' rowIdx = combineRows rowIdx (-(getElem rowIdx col tab')) row tab'
 
---     updateRow :: Tableau -> Int -> Tableau
---     updateRow tab' rowIdx = combineRows rowIdx (-(getElem rowIdx col tab')) row tab'
-
--- updateTableauTest :: Maybe Tableau
--- updateTableauTest =
---   do
---     let tab = initSimplexState testInst
---     pos <- findPivotPos tab
---     return $ updateTableau tab pos
+updateSimplexStateTest :: Maybe SimplexState
+updateSimplexStateTest =
+  do
+    let state@(SimplexState tab _) = initSimplexState testInst
+    pivotCol <- findPivotColumnIndex tab
+    pivotRow <- findPivotRowIndex state pivotCol
+    return $ updateSimplexState state (pivotCol, pivotRow)
 
 {-
->>> updateTableauTest
-Just ┌                                                                ┐
+>>> updateSimplexStateTest
+Just Basic Column Indices: [4,5,1]
+┌                                                                ┐
 │    0 % 1    3 % 4    5 % 2    1 % 1    0 % 1 (-1) % 4   21 % 1 │
 │    0 % 1    3 % 2    4 % 1    0 % 1    1 % 1 (-1) % 2    6 % 1 │
 │    1 % 1    1 % 4    1 % 2    0 % 1    0 % 1    1 % 4    9 % 1 │
@@ -164,10 +168,6 @@ getSolutionVector (SimplexState tab basicColsIdxs) =
     step :: Int -> Rational
     step i = maybe 0 (lastCol V.!) (V.elemIndex i basicColsIdxs)
 
-{-
->>> getSolutionVector $ simplex testInst
--}
-
 ------------------------------------------------------------------------------------------
 
 simplex :: LPInstance -> SimplexResult
@@ -185,10 +185,11 @@ simplex ins = maybe Infeasible solver initSimplex
           case findPivotRowIndex state pivotCol of
             Nothing -> FeasibleUnbounded
             Just pivotRow ->
-              solver $ updateTableau state (pivotCol, pivotRow)
+              solver $ updateSimplexState state (pivotCol, pivotRow)
 
 {-
 >>> simplex testInst
+Solution Vector: [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,28 % 1]
 ┌                                                                ┐
 │    0 % 1    0 % 1    1 % 2    1 % 1 (-1) % 2    0 % 1   18 % 1 │
 │    0 % 1    1 % 1    8 % 3    0 % 1    2 % 3 (-1) % 3    4 % 1 │
