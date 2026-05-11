@@ -54,7 +54,7 @@ testInst =
 ------------------------------------------------------------------------------------------
 
 -- | Combines matA, vecB, vecC and an identity matrix into a tableau and
---   initializes basic columns indices
+--   initializes basic columns indices.
 initSimplexState :: LPInstance -> SimplexState
 initSimplexState (LPInstance a b c) =
   SimplexState
@@ -84,12 +84,12 @@ Basic Column Indices: [4,5,6]
 ------------------------------------------------------------------------------------------
 
 -- | Finds pivot's column index following the Bland's rule or
---   Nothing if every c_j \<= 0 (i.e. -c_j \>=0)
+--   Nothing if every c_j \<= 0 (i.e. -c_j \>=0).
 findPivotColumnIndex :: Tableau -> Maybe Int
 findPivotColumnIndex = fmap (+ 1) . V.findIndex (< 0) . V.init . getLastRow
 
 -- | Finds pivot's row index following the Bland's rule or
---   Nothing if a_{column, row_i} \<= 0 for every i
+--   Nothing if a_{column, row_i} \<= 0 for every i.
 findPivotRowIndex :: SimplexState -> Int -> Maybe Int
 findPivotRowIndex (SimplexState tab basicColsIdxs) pivotColIdx =
   fst (ratios V.! minIdx) >> Just (minIdx + 1)
@@ -121,7 +121,7 @@ Just (1,3)
 
 ------------------------------------------------------------------------------------------
 
--- | Given the pivot's coordinates (column, row) performs one tableau update
+-- | Given the pivot's coordinates (column, row) performs one tableau update.
 updateSimplexState :: SimplexState -> (Int, Int) -> SimplexState
 updateSimplexState (SimplexState tab basicColsIdxs) (col, row) =
   SimplexState
@@ -158,7 +158,7 @@ Just Basic Column Indices: [4,5,1]
 
 ------------------------------------------------------------------------------------------
 
--- | Extracts solution vector [x_1, ..., x_n, objective function] from tableau
+-- | Extracts solution vector [x_1, ..., x_n, objective function] from tableau.
 getSolutionVector :: SimplexState -> V.Vector Rational
 getSolutionVector (SimplexState tab basicColsIdxs) =
   V.fromList $ fmap step [1 .. ncols tab - 1] ++ [V.last lastCol]

@@ -59,12 +59,12 @@ library
 
     -- Modules exported by the library.
     exposed-modules:
-
-    -- Modules included in this library but not exported.
-    other-modules:
         LPSolver.Types,
         LPSolver.Parser,
         LPSolver.Simplex
+
+    -- Modules included in this library but not exported.
+    other-modules:
 
     -- LANGUAGE extensions used by modules in this package.
     -- other-extensions:
@@ -73,7 +73,9 @@ library
     build-depends:
         base ^>=4.18.3.0,
         matrix,
-        vector
+        vector,
+        parsec,
+        mtl
 
     -- Directories containing source files.
     hs-source-dirs:   src

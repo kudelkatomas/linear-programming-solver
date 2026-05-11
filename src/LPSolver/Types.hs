@@ -2,8 +2,10 @@
 
 module LPSolver.Types where
 
+import Control.Monad.Error.Class (MonadError (catchError))
 import Data.Matrix (Matrix (..), getCol, getRow)
 import Data.Vector (Vector)
+import Text.ParserCombinators.Parsec (ParseError)
 
 ------------------------------------------------------------------------------------------
 
@@ -45,7 +47,7 @@ instance Show SimplexResult where
 
 ------------------------------------------------------------------------------------------
 
--- | Simplex algorithm state, basicColsIndices are indexed from 1
+-- | Simplex algorithm state, basicColsIndices are indexed from 1.
 data SimplexState = SimplexState
   { tableau :: Tableau,
     -- size basicColsIndices = nrows tableau - 1
@@ -60,3 +62,26 @@ instance Show SimplexState where
       ++ show indices
       ++ "\n"
       ++ show tab
+
+------------------------------------------------------------------------------------------
+
+-- Error handling is inspired by
+-- https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
+
+newtype SimplexError = Parser ParseError deriving (Show)
+
+-- type ThrowsError a = Either SimplexError a
+type ThrowsError = Either SimplexError
+
+trapError :: (MonadError e m, Show e) => m String -> m String
+trapError action = catchError action (return . show)
+
+-- "We purposely leave extractValue undefined for a Left constructor,
+-- because that represents a programmer error."
+extractValue :: ThrowsError a -> a
+extractValue (Right val) = val
+extractValue (Left _) = undefined
+
+-- | Extracts the value or converts the error to string.
+safeExtractValue :: Either SimplexError String -> String
+safeExtractValue = extractValue . trapError
