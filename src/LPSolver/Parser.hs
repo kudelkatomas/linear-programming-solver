@@ -6,6 +6,8 @@ import Text.ParserCombinators.Parsec
   ( Parser,
     char,
     digit,
+    eof,
+    many,
     many1,
     option,
     parse,
@@ -13,6 +15,7 @@ import Text.ParserCombinators.Parsec
     skipMany,
     space,
     string,
+    try,
   )
 
 ------------------------------------------------------------------------------------------
@@ -36,7 +39,7 @@ parseVector = do
   _ <- char '['
   optionalSpaces
 
-  vals <- sepBy parseInteger (optionalSpaces >> char ',' >> optionalSpaces)
+  vals <- sepBy parseInteger (try (optionalSpaces >> char ',' >> optionalSpaces))
 
   optionalSpaces
   _ <- char ']'
@@ -50,7 +53,7 @@ parseMatrix = do
   _ <- char '['
   optionalSpaces
 
-  rows <- sepBy parseVector (optionalSpaces >> char ',' >> optionalSpaces)
+  rows <- sepBy parseVector (try (optionalSpaces >> char ',' >> optionalSpaces))
 
   optionalSpaces
   _ <- char ']'
@@ -83,8 +86,26 @@ parseLPInstance = do
 
 ------------------------------------------------------------------------------------------
 
-readLPInstance :: String -> ThrowsError LPInstance
-readLPInstance input = case parse parseLPInstance "simplex" input of
+-- | Recognizes multiple LPInstances.
+parseLPInstances :: Parser [LPInstance]
+parseLPInstances = do
+  optionalSpaces
+
+  instances <-
+    many
+      ( do
+          inst <- parseLPInstance
+          optionalSpaces
+          return inst
+      )
+
+  eof
+  return instances
+
+------------------------------------------------------------------------------------------
+
+readLPInstances :: String -> ThrowsError [LPInstance]
+readLPInstances input = case parse parseLPInstances "simplex" input of
   Left err -> throwError $ Parser err
   Right val -> return val
 

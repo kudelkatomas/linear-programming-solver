@@ -15,6 +15,7 @@ data LPInstance = LPInstance
     vecB :: [Integer],
     vecC :: [Integer]
   }
+  deriving (Show)
 
 ------------------------------------------------------------------------------------------
 
