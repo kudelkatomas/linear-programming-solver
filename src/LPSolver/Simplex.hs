@@ -75,7 +75,7 @@ testInst2 =
 initSimplexState :: LPInstance -> SimplexState
 initSimplexState (LPInstance a b c) =
   SimplexState
-    { tableau = (% 1) <$> aIdentityC <|> bWithZero,
+    { tableau = (% 1) <$> (aIdentityC <|> bWithZero),
       basicColsIndices = basicColsIndices'
     }
   where
@@ -116,11 +116,12 @@ findPivotRowIndex (SimplexState tab basicColsIdxs) pivotColIdx =
     b = V.init $ getLastCol tab
     col = V.init $ getCol pivotColIdx tab
 
-    -- Nothing < Just _, therefore ratios multiplied by -1 and maxIndex.
-    -- zip with basicColsIndices (negate ... maxIndex) to follow Bland's rule.
+    -- Nothing < Just _, therefore ratios multiplied by -1 and V.maxIndex.
+    -- zip with basicColsIndices (negate because of V.maxIndex) to follow Bland's rule.
     ratios = V.zip (V.zipWith safeNegRatio b col) (fmap negate basicColsIdxs)
     minIdx = V.maxIndex ratios
 
+    -- Dividing by -d to multiply the ratio by -1, see the comment above.
     safeNegRatio :: Rational -> Rational -> Maybe Rational
     safeNegRatio n d = if d > 0 then Just (n / (-d)) else Nothing
 
@@ -236,6 +237,7 @@ initSimplex ins@(LPInstance a b c) =
       -- Check if x_0 is basic
       case V.elemIndex 1 basicColsIdxs of
         Just rowIdx ->
+          -- TOHLE NEJSPIS NENI SPRAVNE
           SimplexState
             { tableau = minorMatrix (rowIdx + 1) 1 tab,
               basicColsIndices =
