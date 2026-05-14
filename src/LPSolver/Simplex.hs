@@ -2,14 +2,17 @@ module LPSolver.Simplex where
 
 import Data.Matrix
   ( Matrix (ncols),
+    colVector,
     combineRows,
-    fromList,
     fromLists,
     getCol,
     getElem,
     identity,
+    minorMatrix,
     nrows,
+    rowVector,
     scaleRow,
+    submatrix,
     (<->),
     (<|>),
   )
@@ -17,11 +20,14 @@ import Data.Ratio ((%))
 import qualified Data.Vector as V
   ( Vector,
     elemIndex,
+    filter,
     findIndex,
     fromList,
+    indexed,
     init,
     last,
     maxIndex,
+    minIndex,
     zip,
     zipWith,
     (!),
@@ -37,8 +43,8 @@ import LPSolver.Types
   )
 
 ------------------------------------------------------------------------------------------
+-- Instances for testing purposes
 
--- For testing purposes
 testInst :: LPInstance
 testInst =
   LPInstance
@@ -49,6 +55,17 @@ testInst =
         ],
       vecB = [30, 24, 36],
       vecC = [3, 1, 2]
+    }
+
+testInst2 :: LPInstance
+testInst2 =
+  LPInstance
+    { matA =
+        [ [2, -1],
+          [1, -5]
+        ],
+      vecB = [2, -4],
+      vecC = [2, -1]
     }
 
 ------------------------------------------------------------------------------------------
@@ -64,11 +81,12 @@ initSimplexState (LPInstance a b c) =
   where
     aMat = fromLists a
     aNRows = nrows aMat
-    cWithZeros = fmap (* (-1)) c ++ replicate aNRows 0
-    bWithZero = fromList (length b + 1) 1 (b ++ [0])
+    aNCols = ncols aMat
+    cWithZeros = fmap negate c ++ replicate aNRows 0
+    bWithZero = (colVector . V.fromList) (b ++ [0])
     aIdentityC =
-      (aMat <|> identity aNRows) <-> fromList 1 (length c + aNRows) cWithZeros
-    basicColsIndices' = V.fromList [aNRows + i | i <- [1 .. aNRows]]
+      (aMat <|> identity aNRows) <-> (rowVector . V.fromList) cWithZeros
+    basicColsIndices' = V.fromList [aNCols + i | i <- [1 .. aNRows]]
 
 {-
 >>> initSimplexState testInst
@@ -99,8 +117,8 @@ findPivotRowIndex (SimplexState tab basicColsIdxs) pivotColIdx =
     col = V.init $ getCol pivotColIdx tab
 
     -- Nothing < Just _, therefore ratios multiplied by -1 and maxIndex.
-    -- zip with basicColsIndices (* -1 ... maxIndex) to follow Bland's rule.
-    ratios = V.zip (V.zipWith safeNegRatio b col) (fmap (* (-1)) basicColsIdxs)
+    -- zip with basicColsIndices (negate ... maxIndex) to follow Bland's rule.
+    ratios = V.zip (V.zipWith safeNegRatio b col) (fmap negate basicColsIdxs)
     minIdx = V.maxIndex ratios
 
     safeNegRatio :: Rational -> Rational -> Maybe Rational
@@ -168,27 +186,100 @@ getSolutionVector (SimplexState tab basicColsIdxs) =
     step :: Int -> Rational
     step i = maybe 0 (lastCol V.!) (V.elemIndex i basicColsIdxs)
 
+-- | Extracts tableau and solution vector from simplex state,
+--   it is expected that optimal solution was found.
+getOptimalSolution :: SimplexState -> SimplexResult
+getOptimalSolution state@(SimplexState tab _) = Optimal tab $ getSolutionVector state
+
 ------------------------------------------------------------------------------------------
 
-simplex :: LPInstance -> SimplexResult
-simplex ins = maybe Infeasible solver initSimplex
-  where
-    -- DOPSAT DOKUMENTACI
-    initSimplex :: Maybe SimplexState
-    initSimplex = Just $ initSimplexState ins
+-- | Implements the main part of the Simplex algorithm,
+--   i.e. finding the pivot and updating the tableau
+--   until optimal solution is found.
+simplexSolver :: SimplexState -> Maybe SimplexState
+simplexSolver state@(SimplexState tab _) =
+  case findPivotColumnIndex tab of
+    -- Nothing => Optimal solution was found
+    Nothing -> Just state
+    Just pivotCol -> do
+      -- Nothing => The instance is FeasibleUnbounded
+      pivotRow <- findPivotRowIndex state pivotCol
+      simplexSolver $ updateSimplexState state (pivotCol, pivotRow)
 
-    solver :: SimplexState -> SimplexResult
-    solver state@(SimplexState tab _) =
-      case findPivotColumnIndex tab of
-        Nothing -> Optimal tab $ getSolutionVector state
-        Just pivotCol ->
-          case findPivotRowIndex state pivotCol of
-            Nothing -> FeasibleUnbounded
-            Just pivotRow ->
-              solver $ updateSimplexState state (pivotCol, pivotRow)
+-- | Finds initial feasible solution.
+initSimplex :: LPInstance -> Maybe SimplexState
+initSimplex ins@(LPInstance a b c) =
+  if all (>= 0) b
+    then
+      Just $ initSimplexState ins
+    else
+      let state@(SimplexState tab basicColsIdxs) =
+            -- vecC = -1 : ..., where -1 because initSimplexState negates vecC
+            initSimplexState (ins {matA = fmap (-1 :) a, vecC = -1 : fmap (const 0) c})
+
+          pivotCol = 1
+          -- zip with basicColsIndices to follow Bland's rule
+          pivotRow = 1 + V.minIndex (V.zip ((V.init . getLastCol) tab) basicColsIdxs)
+
+          -- "all (>= 0) b" holds in this state
+          updatedState = updateSimplexState state (pivotCol, pivotRow)
+       in simplexSolver updatedState >>= safeTransform
+  where
+    safeTransform :: SimplexState -> Maybe SimplexState
+    safeTransform state@(SimplexState tab _) =
+      case (V.last . getLastCol) tab of
+        0 -> Just $ (updateLastRow . removeX0) state
+        _ -> Nothing
+
+    removeX0 :: SimplexState -> SimplexState
+    removeX0 (SimplexState tab basicColsIdxs) =
+      -- Check if x_0 is basic
+      case V.elemIndex 1 basicColsIdxs of
+        Just rowIdx ->
+          SimplexState
+            { tableau = minorMatrix (rowIdx + 1) 1 tab,
+              basicColsIndices =
+                (fmap (subtract 1 . snd) . V.filter ((/= rowIdx) . fst) . V.indexed)
+                  basicColsIdxs
+            }
+        Nothing ->
+          SimplexState
+            { tableau = submatrix 1 (nrows tab) 2 (ncols tab) tab,
+              basicColsIndices = fmap (subtract 1) basicColsIdxs
+            }
+
+    -- We add the initial vector C but update it so that all basic columns
+    -- have zero as their last component.
+    updateLastRow :: SimplexState -> SimplexState
+    updateLastRow state@(SimplexState tab basicColsIdxs) =
+      state {tableau = foldl step initTableau (V.indexed basicColsIdxs)}
+      where
+        tabWithoutLastRow = submatrix 1 (nrows tab - 1) 1 (ncols tab) tab
+
+        cWithZeros =
+          V.fromList $ fmap ((% 1) . negate) c ++ replicate (ncols tab - length c) 0
+
+        initTableau = tabWithoutLastRow <-> rowVector cWithZeros
+        lastRowIdx = nrows initTableau
+
+        step :: Tableau -> (Int, Int) -> Tableau
+        step tab' (rowIdx, basicColIdx) =
+          let lastComponent = getElem lastRowIdx basicColIdx tab'
+           in if lastComponent /= 0
+                then combineRows lastRowIdx (-lastComponent) (rowIdx + 1) tab'
+                else tab'
+
+-- | Simplex algorithm implementation solving the standard maximum problem.
+simplex :: LPInstance -> SimplexResult
+simplex ins = maybe Infeasible solve $ initSimplex ins
+  where
+    solve :: SimplexState -> SimplexResult
+    solve state = maybe FeasibleUnbounded getOptimalSolution $ simplexSolver state
 
 {-
 >>> simplex testInst
+>>> initSimplex testInst2
+>>> simplex testInst2
 Solution Vector: [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,28 % 1]
 ┌                                                                ┐
 │    0 % 1    0 % 1    1 % 2    1 % 1 (-1) % 2    0 % 1   18 % 1 │
@@ -196,4 +287,16 @@ Solution Vector: [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,28 % 1]
 │    1 % 1    0 % 1 (-1) % 6    0 % 1 (-1) % 6    1 % 3    8 % 1 │
 │    0 % 1    0 % 1    1 % 6    0 % 1    1 % 6    2 % 3   28 % 1 │
 └                                                                ┘
+Just Basic Column Indices: [3,2]
+┌                                              ┐
+│    9 % 5    0 % 1    1 % 1 (-1) % 5   14 % 5 │
+│ (-1) % 5    1 % 1    0 % 1 (-1) % 5    4 % 5 │
+│ (-9) % 5    0 % 1    0 % 1    1 % 5 (-4) % 5 │
+└                                              ┘
+Solution Vector: [14 % 9,10 % 9,0 % 1,0 % 1,2 % 1]
+┌                                              ┐
+│    1 % 1    0 % 1    5 % 9 (-1) % 9   14 % 9 │
+│    0 % 1    1 % 1    1 % 9 (-2) % 9   10 % 9 │
+│    0 % 1    0 % 1    1 % 1    0 % 1    2 % 1 │
+└                                              ┘
 -}

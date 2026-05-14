@@ -34,7 +34,7 @@ main = do
     printHelp :: IO ()
     printHelp = do
       putStrLn $ "Usage: " ++ "cabal run lp-solver --" ++ " [OPTIONS] [ARGUMENTS]"
-      putStrLn "Linear programming solver implementing the Simplex algorithm."
+      putStrLn "Linear programming standard maximum problem solver implementing the Simplex algorithm."
       putStrLn ""
       putStrLn "Options:"
       putStrLn "  -h, --help    Show this help message and exit"
