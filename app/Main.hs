@@ -40,19 +40,19 @@ main = do
       putStrLn "  -h, --help    Show this help message and exit"
       putStrLn ""
       putStrLn "Examples:"
-      putStrLn $
-        "  cabal run lp-solver --"
-          ++ " \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]],"
-          ++ " [b_1, ..., b_m], [c_1, ..., c_n]}\" ... \"{...}\""
-      putStrLn $
-        "  cat input.txt | "
-          ++ "cabal run lp-solver"
-      putStrLn $
-        "  cat input.txt | "
-          ++ "cabal run lp-solver"
-          ++ " > output.txt"
-      putStrLn $
-        "  cat input.txt | "
-          ++ "cabal run lp-solver --"
-          ++ " \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]],"
-          ++ " [b_1, ..., b_m], [c_1, ..., c_n]}\" ... \"{...}\""
+      putStrLn
+        "  cabal run lp-solver --\
+        \ \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]], \
+        \ [b_1, ..., b_m], [c_1, ..., c_n]}\" ... \"{...}\""
+      putStrLn
+        "  cat input.txt |\
+        \ cabal run lp-solver"
+      putStrLn
+        "  cat input.txt |\
+        \ cabal run lp-solver\
+        \ > output.txt"
+      putStrLn
+        "  cat input.txt |\
+        \ cabal run lp-solver --\
+        \ \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]],\
+        \ [b_1, ..., b_m], [c_1, ..., c_n]}\" ... \"{...}\""

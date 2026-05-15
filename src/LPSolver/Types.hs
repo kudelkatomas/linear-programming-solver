@@ -69,7 +69,10 @@ instance Show SimplexState where
 -- Error handling is inspired by
 -- https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
 
-newtype SimplexError = Parser ParseError deriving (Show)
+data SimplexError
+  = Parser ParseError
+  | NotImplemented String
+  deriving (Show)
 
 -- type ThrowsError a = Either SimplexError a
 type ThrowsError = Either SimplexError

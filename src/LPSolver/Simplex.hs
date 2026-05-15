@@ -1,5 +1,6 @@
 module LPSolver.Simplex where
 
+import Control.Monad.Error.Class (MonadError (throwError))
 import Data.Matrix
   ( Matrix (ncols),
     colVector,
@@ -8,7 +9,6 @@ import Data.Matrix
     getCol,
     getElem,
     identity,
-    minorMatrix,
     nrows,
     rowVector,
     scaleRow,
@@ -20,7 +20,6 @@ import Data.Ratio ((%))
 import qualified Data.Vector as V
   ( Vector,
     elemIndex,
-    filter,
     findIndex,
     fromList,
     indexed,
@@ -35,9 +34,11 @@ import qualified Data.Vector as V
   )
 import LPSolver.Types
   ( LPInstance (..),
+    SimplexError (NotImplemented),
     SimplexResult (..),
     SimplexState (..),
     Tableau,
+    ThrowsError,
     getLastCol,
     getLastRow,
   )
@@ -208,11 +209,11 @@ simplexSolver state@(SimplexState tab _) =
       simplexSolver $ updateSimplexState state (pivotCol, pivotRow)
 
 -- | Finds initial feasible solution.
-initSimplex :: LPInstance -> Maybe SimplexState
+initSimplex :: LPInstance -> ThrowsError (Maybe SimplexState)
 initSimplex ins@(LPInstance a b c) =
   if all (>= 0) b
     then
-      Just $ initSimplexState ins
+      (return . Just . initSimplexState) ins
     else
       let state@(SimplexState tab basicColsIdxs) =
             -- vecC = -1 : ..., where -1 because initSimplexState negates vecC
@@ -224,31 +225,41 @@ initSimplex ins@(LPInstance a b c) =
 
           -- "all (>= 0) b" holds in this state
           updatedState = updateSimplexState state (pivotCol, pivotRow)
-       in simplexSolver updatedState >>= safeTransform
+       in maybe (return Nothing) safeTransform (simplexSolver updatedState)
   where
-    safeTransform :: SimplexState -> Maybe SimplexState
+    safeTransform :: SimplexState -> ThrowsError (Maybe SimplexState)
     safeTransform state@(SimplexState tab _) =
       case (V.last . getLastCol) tab of
-        0 -> Just $ (updateLastRow . removeX0) state
-        _ -> Nothing
+        0 -> Just . updateLastRow <$> removeX0 state
+        _ -> return Nothing
 
-    removeX0 :: SimplexState -> SimplexState
+    removeX0 :: SimplexState -> ThrowsError SimplexState
     removeX0 (SimplexState tab basicColsIdxs) =
-      -- Check if x_0 is basic
+      -- Throws an error if x_0 is basic,
+      -- since this case is not implemented yet.
       case V.elemIndex 1 basicColsIdxs of
-        Just rowIdx ->
-          -- TOHLE NEJSPIS NENI SPRAVNE
-          SimplexState
-            { tableau = minorMatrix (rowIdx + 1) 1 tab,
-              basicColsIndices =
-                (fmap (subtract 1 . snd) . V.filter ((/= rowIdx) . fst) . V.indexed)
-                  basicColsIdxs
-            }
+        Just _ ->
+          throwError
+            ( NotImplemented
+                ( "InitSimplex found initial feasible solution, but x_0 is basic.\
+                  \ This case is not implemented yet.\n"
+                    ++ show tab
+                    ++ "\n"
+                )
+            )
+        -- SimplexState
+        --   { tableau = minorMatrix (rowIdx + 1) 1 tab,
+        --     basicColsIndices =
+        --       (fmap (subtract 1 . snd) . V.filter ((/= rowIdx) . fst) . V.indexed)
+        --         basicColsIdxs
+        --   }
         Nothing ->
-          SimplexState
-            { tableau = submatrix 1 (nrows tab) 2 (ncols tab) tab,
-              basicColsIndices = fmap (subtract 1) basicColsIdxs
-            }
+          return
+            ( SimplexState
+                { tableau = submatrix 1 (nrows tab) 2 (ncols tab) tab,
+                  basicColsIndices = fmap (subtract 1) basicColsIdxs
+                }
+            )
 
     -- We add the initial vector C but update it so that all basic columns
     -- have zero as their last component.
@@ -271,31 +282,34 @@ initSimplex ins@(LPInstance a b c) =
                 then combineRows lastRowIdx (-lastComponent) (rowIdx + 1) tab'
                 else tab'
 
+{-
+>>> initSimplex testInst2
+Right (Just Basic Column Indices: [3,2]
+┌                                              ┐
+│    9 % 5    0 % 1    1 % 1 (-1) % 5   14 % 5 │
+│ (-1) % 5    1 % 1    0 % 1 (-1) % 5    4 % 5 │
+│ (-9) % 5    0 % 1    0 % 1    1 % 5 (-4) % 5 │
+└                                              ┘)
+-}
+
 -- | Simplex algorithm implementation solving the standard maximum problem.
-simplex :: LPInstance -> SimplexResult
-simplex ins = maybe Infeasible solve $ initSimplex ins
+simplex :: LPInstance -> ThrowsError SimplexResult
+simplex ins = initSimplex ins >>= maybe (return Infeasible) (return . solve)
   where
     solve :: SimplexState -> SimplexResult
     solve state = maybe FeasibleUnbounded getOptimalSolution $ simplexSolver state
 
 {-
 >>> simplex testInst
->>> initSimplex testInst2
 >>> simplex testInst2
-Solution Vector: [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,28 % 1]
+Right Solution Vector: [8 % 1,4 % 1,0 % 1,18 % 1,0 % 1,0 % 1,28 % 1]
 ┌                                                                ┐
 │    0 % 1    0 % 1    1 % 2    1 % 1 (-1) % 2    0 % 1   18 % 1 │
 │    0 % 1    1 % 1    8 % 3    0 % 1    2 % 3 (-1) % 3    4 % 1 │
 │    1 % 1    0 % 1 (-1) % 6    0 % 1 (-1) % 6    1 % 3    8 % 1 │
 │    0 % 1    0 % 1    1 % 6    0 % 1    1 % 6    2 % 3   28 % 1 │
 └                                                                ┘
-Just Basic Column Indices: [3,2]
-┌                                              ┐
-│    9 % 5    0 % 1    1 % 1 (-1) % 5   14 % 5 │
-│ (-1) % 5    1 % 1    0 % 1 (-1) % 5    4 % 5 │
-│ (-9) % 5    0 % 1    0 % 1    1 % 5 (-4) % 5 │
-└                                              ┘
-Solution Vector: [14 % 9,10 % 9,0 % 1,0 % 1,2 % 1]
+Right Solution Vector: [14 % 9,10 % 9,0 % 1,0 % 1,2 % 1]
 ┌                                              ┐
 │    1 % 1    0 % 1    5 % 9 (-1) % 9   14 % 9 │
 │    0 % 1    1 % 1    1 % 9 (-2) % 9   10 % 9 │
