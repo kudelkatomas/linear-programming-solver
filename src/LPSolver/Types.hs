@@ -15,7 +15,16 @@ data LPInstance = LPInstance
     vecB :: [Integer],
     vecC :: [Integer]
   }
-  deriving (Show)
+
+instance Show LPInstance where
+  show :: LPInstance -> String
+  show (LPInstance a b c) =
+    "LP Instance: A = "
+      ++ show a
+      ++ "; b = "
+      ++ show b
+      ++ "; c = "
+      ++ show c
 
 ------------------------------------------------------------------------------------------
 
@@ -80,12 +89,17 @@ type ThrowsError = Either SimplexError
 trapError :: (MonadError e m, Show e) => m String -> m String
 trapError action = catchError action (return . show)
 
--- "We purposely leave extractValue undefined for a Left constructor,
--- because that represents a programmer error."
-extractValue :: ThrowsError a -> a
-extractValue (Right val) = val
-extractValue (Left _) = undefined
+-- | Extracts the string or converts the error to a string.
+safeExtractString :: ThrowsError String -> String
+safeExtractString = extractValue . trapError
+  where
+    -- https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
+    -- "We purposely leave extractValue undefined for a Left constructor,
+    -- because that represents a programmer error."
+    extractValue :: ThrowsError b -> b
+    extractValue (Right val) = val
+    extractValue (Left _) = undefined
 
--- | Extracts the value or converts the error to string.
-safeExtractValue :: Either SimplexError String -> String
-safeExtractValue = extractValue . trapError
+-- | Extracts the value as a string using Show or converts the error to string.
+safeShowValue :: (Show a) => ThrowsError a -> String
+safeShowValue = safeExtractString . fmap show

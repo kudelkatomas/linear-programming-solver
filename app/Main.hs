@@ -1,7 +1,14 @@
 module Main where
 
 import LPSolver.Parser (readLPInstances)
-import LPSolver.Types (safeExtractValue)
+import LPSolver.Simplex (simplex)
+import LPSolver.Types
+  ( LPInstance,
+    SimplexResult,
+    ThrowsError,
+    safeExtractString,
+    safeShowValue,
+  )
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
 import System.IO (hIsTerminalDevice, hPutStrLn, stderr, stdin)
@@ -24,11 +31,24 @@ main = do
           exitFailure
         (False, _) -> do
           contents <- getContents
-          solveInstances $ unlines args ++ contents
-        _ -> solveInstances $ unlines args
+          (writeOutput . solveInstances) $ unlines args ++ contents
+        _ -> (writeOutput . solveInstances) $ unlines args
   where
-    solveInstances :: String -> IO ()
-    solveInstances = putStrLn . safeExtractValue . fmap show . readLPInstances
+    solveInstances :: String -> ThrowsError [(LPInstance, ThrowsError SimplexResult)]
+    solveInstances input = do
+      instances <- readLPInstances input
+      let results = fmap simplex instances
+      return $ zip instances results
+
+    writeOutput :: ThrowsError [(LPInstance, ThrowsError SimplexResult)] -> IO ()
+    writeOutput =
+      putStrLn
+        . safeExtractString
+        . fmap (concatMap formatSolution)
+
+    formatSolution :: (LPInstance, ThrowsError SimplexResult) -> String
+    formatSolution (ins, res) =
+      "{\n" ++ show ins ++ "\n" ++ safeShowValue res ++ "\n}\n"
 
     --  Prints the help message
     printHelp :: IO ()
@@ -42,7 +62,7 @@ main = do
       putStrLn "Examples:"
       putStrLn
         "  cabal run lp-solver --\
-        \ \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]], \
+        \ \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]],\
         \ [b_1, ..., b_m], [c_1, ..., c_n]}\" ... \"{...}\""
       putStrLn
         "  cat input.txt |\
