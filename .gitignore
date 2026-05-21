@@ -29,7 +29,4 @@ cabal.sandbox.config
 Thumbs.db
 
 # Input and output
-input.txt
-testInput.txt
-output.txt
-testOutput.txt
+*put.txt
