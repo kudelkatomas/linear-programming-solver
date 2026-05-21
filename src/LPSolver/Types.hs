@@ -39,29 +39,6 @@ getLastRow tbl = getRow (nrows tbl) tbl
 
 ------------------------------------------------------------------------------------------
 
--- | Simplex algorithm result is of this type
-data SimplexResult
-  = FeasibleUnbounded Tableau
-  | Infeasible Tableau
-  | Optimal Tableau (Vector Rational)
-
-instance Show SimplexResult where
-  show :: SimplexResult -> String
-  show (FeasibleUnbounded tab) = "Feasible Unbound\n" ++ show tab
-  show (Infeasible tab) = "Infeasible\n" ++ show tab
-  show (Optimal tab sol) =
-    "Solution Vector: "
-      ++ show sol
-      ++ "\n"
-      ++ show tab
-
-showCompact :: SimplexResult -> String
-showCompact (FeasibleUnbounded _) = "Feasible Unbound"
-showCompact (Infeasible _) = "Infeasible"
-showCompact (Optimal _ sol) = "Solution Vector: " ++ show sol
-
-------------------------------------------------------------------------------------------
-
 -- | Simplex algorithm state, basicColsIndices are indexed from 1.
 data SimplexState = SimplexState
   { tableau :: Tableau,
@@ -77,6 +54,35 @@ instance Show SimplexState where
       ++ show indices
       ++ "\n"
       ++ show tab
+
+------------------------------------------------------------------------------------------
+
+-- | Represents the status of the computation at a specific phase
+data SimplexStatus
+  = StatusUnbounded SimplexState
+  | StatusInfeasible SimplexState
+  | StatusOptimal SimplexState
+
+-- | The result returned to the user
+data SimplexResult
+  = FeasibleUnbounded SimplexState
+  | Infeasible SimplexState
+  | Optimal SimplexState (Vector Rational)
+
+instance Show SimplexResult where
+  show :: SimplexResult -> String
+  show (FeasibleUnbounded (SimplexState tab _)) = "Feasible Unbound\n" ++ show tab
+  show (Infeasible (SimplexState tab _)) = "Infeasible\n" ++ show tab
+  show (Optimal (SimplexState tab _) sol) =
+    "Solution Vector: "
+      ++ show sol
+      ++ "\n"
+      ++ show tab
+
+showCompact :: SimplexResult -> String
+showCompact (FeasibleUnbounded _) = "Feasible Unbound"
+showCompact (Infeasible _) = "Infeasible"
+showCompact (Optimal _ sol) = "Solution Vector: " ++ show sol
 
 ------------------------------------------------------------------------------------------
 
