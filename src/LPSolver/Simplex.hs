@@ -1,3 +1,5 @@
+{-# LANGUAGE LambdaCase #-}
+
 module LPSolver.Simplex where
 
 import Control.Monad.Error.Class (MonadError (throwError))
@@ -34,9 +36,10 @@ import qualified Data.Vector as V
   )
 import LPSolver.Types
   ( LPInstance (..),
-    SimplexError (NotImplemented),
+    SimplexError (..),
     SimplexResult (..),
     SimplexState (..),
+    SimplexStatus (..),
     Tableau,
     ThrowsError,
     getLastCol,
@@ -191,29 +194,30 @@ getSolutionVector (SimplexState tab basicColsIdxs) =
 -- | Extracts tableau and solution vector from simplex state,
 --   it is expected that optimal solution was found.
 getOptimalSolution :: SimplexState -> SimplexResult
-getOptimalSolution state@(SimplexState tab _) = Optimal tab $ getSolutionVector state
+getOptimalSolution state = Optimal state $ getSolutionVector state
 
 ------------------------------------------------------------------------------------------
 
 -- | Implements the main part of the Simplex algorithm,
 --   i.e. finding the pivot and updating the tableau
 --   until optimal solution is found.
-simplexSolver :: SimplexState -> Maybe SimplexState
+simplexSolver :: SimplexState -> SimplexStatus
 simplexSolver state@(SimplexState tab _) =
   case findPivotColumnIndex tab of
     -- Nothing => Optimal solution was found
-    Nothing -> Just state
-    Just pivotCol -> do
+    Nothing -> StatusOptimal state
+    Just pivotCol -> case findPivotRowIndex state pivotCol of
       -- Nothing => The instance is FeasibleUnbounded
-      pivotRow <- findPivotRowIndex state pivotCol
-      simplexSolver $ updateSimplexState state (pivotCol, pivotRow)
+      Nothing -> StatusUnbounded state
+      Just pivotRow -> simplexSolver $ updateSimplexState state (pivotCol, pivotRow)
 
 -- | Finds initial feasible solution.
-initSimplex :: LPInstance -> ThrowsError (Maybe SimplexState)
+initSimplex :: LPInstance -> ThrowsError SimplexStatus
 initSimplex ins@(LPInstance a b c) =
   if all (>= 0) b
     then
-      (return . Just . initSimplexState) ins
+      -- Initial feasible solution exists, optimal might not.
+      (return . StatusOptimal . initSimplexState) ins
     else
       let state@(SimplexState tab basicColsIdxs) =
             -- vecC = -1 : ..., where -1 because initSimplexState negates vecC
@@ -225,13 +229,29 @@ initSimplex ins@(LPInstance a b c) =
 
           -- "all (>= 0) b" holds in this state
           updatedState = updateSimplexState state (pivotCol, pivotRow)
-       in maybe (return Nothing) safeTransform (simplexSolver updatedState)
+       in case simplexSolver updatedState of
+            (StatusUnbounded _) ->
+              throwError
+                ( NotImplemented
+                    "InitSimplex initial instance is FeasibleUnbounded.\
+                    \ This case is not implemented yet."
+                )
+            (StatusInfeasible (SimplexState errorTab _)) ->
+              throwError
+                ( LogicError
+                    ( "SimplexSolver returned Infeasible\
+                      \ on initSimplex's initial instance.\
+                      \ This should never happen."
+                        ++ show errorTab
+                    )
+                )
+            (StatusOptimal s) -> safeTransform s
   where
-    safeTransform :: SimplexState -> ThrowsError (Maybe SimplexState)
+    safeTransform :: SimplexState -> ThrowsError SimplexStatus
     safeTransform state@(SimplexState tab _) =
       case (V.last . getLastCol) tab of
-        0 -> Just . updateLastRow <$> removeX0 state
-        _ -> return Nothing
+        0 -> StatusOptimal . updateLastRow <$> removeX0 state
+        _ -> return (StatusInfeasible state)
 
     removeX0 :: SimplexState -> ThrowsError SimplexState
     removeX0 (SimplexState tab basicColsIdxs) =
@@ -284,7 +304,7 @@ initSimplex ins@(LPInstance a b c) =
 
 {-
 >>> initSimplex testInst2
-Right (Just Basic Column Indices: [3,2]
+Right (StatusOptimal Basic Column Indices: [3,2]
 ┌                                              ┐
 │    9 % 5    0 % 1    1 % 1 (-1) % 5   14 % 5 │
 │ (-1) % 5    1 % 1    0 % 1 (-1) % 5    4 % 5 │
@@ -294,10 +314,33 @@ Right (Just Basic Column Indices: [3,2]
 
 -- | Simplex algorithm implementation solving the standard maximum problem.
 simplex :: LPInstance -> ThrowsError SimplexResult
-simplex ins = initSimplex ins >>= maybe (return Infeasible) (return . solve)
+simplex ins =
+  initSimplex ins
+    >>= ( \case
+            (StatusUnbounded (SimplexState errorTab _)) ->
+              throwError
+                ( LogicError
+                    ( "InitSimplex returned Unbounded.\
+                      \ This should never happen."
+                        ++ show errorTab
+                    )
+                )
+            (StatusInfeasible state) -> (return . Infeasible) state
+            (StatusOptimal state) -> solve state
+        )
   where
-    solve :: SimplexState -> SimplexResult
-    solve state = maybe FeasibleUnbounded getOptimalSolution $ simplexSolver state
+    solve :: SimplexState -> ThrowsError SimplexResult
+    solve state = case simplexSolver state of
+      (StatusUnbounded s) -> (return . FeasibleUnbounded) s
+      (StatusInfeasible (SimplexState errorTab _)) ->
+        throwError
+          ( LogicError
+              ( "SimplexSolver returned Infeasible.\
+                \ This should never happen."
+                  ++ show errorTab
+              )
+          )
+      (StatusOptimal s) -> (return . getOptimalSolution) s
 
 {-
 >>> simplex testInst
