@@ -42,7 +42,7 @@ main = do
 
     writeOutput :: ThrowsError [(LPInstance, ThrowsError SimplexResult)] -> IO ()
     writeOutput =
-      putStrLn
+      putStr
         . safeExtractString
         . fmap (concatMap formatSolution)
 
