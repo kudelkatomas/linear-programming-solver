@@ -62,6 +62,7 @@ data SimplexStatus
   = StatusUnbounded SimplexState
   | StatusInfeasible SimplexState
   | StatusOptimal SimplexState
+  deriving (Show)
 
 -- | The result returned to the user
 data SimplexResult
@@ -92,6 +93,7 @@ showCompact (Optimal _ sol) = "Solution Vector: " ++ show sol
 data SimplexError
   = Parser ParseError
   | NotImplemented String
+  | LogicError String
   deriving (Show)
 
 -- type ThrowsError a = Either SimplexError a
