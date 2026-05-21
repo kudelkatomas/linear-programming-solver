@@ -116,3 +116,6 @@ safeExtractString = extractValue . trapError
 -- | Extracts the value as a string using Show or converts the error to string.
 safeShowValue :: (Show a) => ThrowsError a -> String
 safeShowValue = safeExtractString . fmap show
+
+safeShowCompactValue :: ThrowsError SimplexResult -> String
+safeShowCompactValue = safeExtractString . fmap showCompact
