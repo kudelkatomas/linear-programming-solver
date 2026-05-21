@@ -41,19 +41,24 @@ getLastRow tbl = getRow (nrows tbl) tbl
 
 -- | Simplex algorithm result is of this type
 data SimplexResult
-  = FeasibleUnbounded
-  | Infeasible
+  = FeasibleUnbounded Tableau
+  | Infeasible Tableau
   | Optimal Tableau (Vector Rational)
 
 instance Show SimplexResult where
   show :: SimplexResult -> String
-  show FeasibleUnbounded = "Feasible Unbound"
-  show Infeasible = "Infeasible"
+  show (FeasibleUnbounded tab) = "Feasible Unbound\n" ++ show tab
+  show (Infeasible tab) = "Infeasible\n" ++ show tab
   show (Optimal tab sol) =
     "Solution Vector: "
       ++ show sol
       ++ "\n"
       ++ show tab
+
+showCompact :: SimplexResult -> String
+showCompact (FeasibleUnbounded _) = "Feasible Unbound"
+showCompact (Infeasible _) = "Infeasible"
+showCompact (Optimal _ sol) = "Solution Vector: " ++ show sol
 
 ------------------------------------------------------------------------------------------
 
