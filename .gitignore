@@ -28,5 +28,6 @@ cabal.sandbox.config
 # OS specific (Windows)
 Thumbs.db
 
-# Input and output
+# Input, output and toDo file
 *put.txt
+toDo.txt
