@@ -198,7 +198,7 @@ getOptimalSolution state = Optimal state $ getSolutionVector state
 
 ------------------------------------------------------------------------------------------
 
--- | Implements the main part of the Simplex algorithm,
+-- | Implements the main part of the simplex algorithm,
 --   i.e. finding the pivot and updating the tableau
 --   until optimal solution is found.
 simplexSolver :: SimplexState -> SimplexStatus
