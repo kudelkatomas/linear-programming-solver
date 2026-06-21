@@ -62,7 +62,7 @@ main = do
       putStr $
         unlines
           [ "Usage: cabal run lp-solver -- [OPTIONS] [ARGUMENTS]",
-            "Linear programming standard maximum problem solver implementing the Simplex algorithm.",
+            "Linear programming standard maximum problem solver implementing the simplex algorithm.",
             "",
             "Options:",
             "  -h, --help       Show this help message and exit",
