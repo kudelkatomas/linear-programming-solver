@@ -69,8 +69,8 @@ main = do
             "  -v, --verbose    Prints the final tableau for every result",
             "",
             "Examples:",
-            "  cabal run lp-solver -- \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]], [b_1, ..., b_m], [c_1, ..., c_n]}\"",
+            "  cabal run lp-solver -- \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]], [b_1, ..., b_m], [c_1, ..., c_n]} ... {...}\"",
             "  cat input.txt | cabal run lp-solver",
             "  cat input.txt | cabal run lp-solver > output.txt",
-            "  cat input.txt | cabal run lp-solver -- -v \"{[[a_11, ..., a_1n], ...]}\" > output.txt"
+            "  cat input.txt | cabal run lp-solver -- -v \"{[[a_11, ..., a_1n], ...]} ... {...}\" > output.txt"
           ]
