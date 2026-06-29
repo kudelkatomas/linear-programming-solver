@@ -3,6 +3,7 @@
 module LPSolver.Types where
 
 import Control.Monad.Error.Class (MonadError (catchError))
+import Control.Monad.State.Strict (State)
 import Data.Matrix (Matrix (..), getCol, getRow)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -77,7 +78,7 @@ instance Show SimplexState where
 ------------------------------------------------------------------------------------------
 -- SimplexM
 
-data SimplexM a = State SimplexState a
+type SimplexM a = State SimplexState a
 
 ------------------------------------------------------------------------------------------
 -- Result printing

@@ -3,6 +3,8 @@
 module LPSolver.Simplex where
 
 import Control.Monad.Error.Class (MonadError (throwError))
+import Control.Monad.State (get, put)
+import Control.Monad.State.Strict (execState)
 import Data.Matrix
   ( Matrix (ncols),
     colVector,
@@ -37,6 +39,7 @@ import qualified Data.Vector as V
 import LPSolver.Types
   ( LPInstance (..),
     SimplexError (..),
+    SimplexM,
     SimplexState (..),
     SimplexStatus (..),
     Tableau,
@@ -72,6 +75,7 @@ testInst2 =
     }
 
 ------------------------------------------------------------------------------------------
+-- Initialize SimplexState
 
 -- | Combines matA, vecB, vecC and an identity matrix into a tableau and
 --   initializes basic columns indices.
@@ -92,8 +96,11 @@ initSimplexState (LPInstance a b c) =
       (aMat <|> identity aNRows) <-> (rowVector . V.fromList) cWithZeros
     basicColsIndices' = V.fromList [aNCols + i | i <- [1 .. aNRows]]
 
+testInstInitState :: SimplexState
+testInstInitState = initSimplexState testInst
+
 {-
->>> initSimplexState testInst
+>>> testInstInitState
 Status: Running
 Basic Column Indices: [4,5,6]
 ┌                                                                ┐
@@ -105,6 +112,7 @@ Basic Column Indices: [4,5,6]
 -}
 
 ------------------------------------------------------------------------------------------
+-- Find pivot
 
 -- | Finds pivot's column index following the Bland's rule or
 --   Nothing if every c_j \<= 0 (i.e. -c_j \>=0).
@@ -114,7 +122,7 @@ findPivotColumnIndex = fmap (+ 1) . V.findIndex (< 0) . V.init . getLastRow
 -- | Finds pivot's row index following the Bland's rule or
 --   Nothing if a_{column, row_i} \<= 0 for every i.
 findPivotRowIndex :: SimplexState -> Int -> Maybe Int
-findPivotRowIndex (SimplexState tab basicColsIdxs) pivotColIdx =
+findPivotRowIndex (SimplexState tab basicColsIdxs _) pivotColIdx =
   fst (ratios V.! minIdx) >> Just (minIdx + 1)
   where
     -- Drop the last row
@@ -131,48 +139,55 @@ findPivotRowIndex (SimplexState tab basicColsIdxs) pivotColIdx =
     safeNegRatio n d = if d > 0 then Just (n / (-d)) else Nothing
 
 findPivotTest :: Maybe (Int, Int)
-findPivotTest =
-  do
-    let state = initSimplexState testInst
-    col <- findPivotColumnIndex (tableau state)
-    row <- findPivotRowIndex state col
-    return (col, row)
+findPivotTest = do
+  col <- findPivotColumnIndex (tableau testInstInitState)
+  row <- findPivotRowIndex testInstInitState col
+  return (col, row)
 
 {-
 >>> findPivotTest
 Just (1,3)
 -}
 
-{-
 ------------------------------------------------------------------------------------------
+-- Pivoting
 
--- | Given the pivot's coordinates (column, row) performs one tableau update.
-updateSimplexState :: SimplexState -> (Int, Int) -> SimplexState
-updateSimplexState (SimplexState tab basicColsIdxs) (col, row) =
-  SimplexState
-    { tableau = foldl updateRow scaledTab targetRows,
-      basicColsIndices = basicColsIdxs V.// [(row - 1, col)]
-    }
-  where
-    targetRows = [i | i <- [1 .. nrows tab], i /= row]
-    scaledTab =
-      let pivot = getElem row col tab
-       in scaleRow (1 / pivot) row tab
+-- | Given pivot's coordinates (column, row), tableau and target row,
+--   performs one row update.
+updateTableauRow :: (Int, Int) -> Tableau -> Int -> Tableau
+updateTableauRow (col, row) tab targetRow =
+  combineRows targetRow (-(getElem targetRow col tab)) row tab
 
-    updateRow :: Tableau -> Int -> Tableau
-    updateRow tab' rowIdx = combineRows rowIdx (-(getElem rowIdx col tab')) row tab'
+-- | Given tableau and pivot's coordinates (column, row),
+--   performs one tableau update.
+updateTableau :: Tableau -> (Int, Int) -> Tableau
+updateTableau tab coords@(col, row) =
+  let targetRows = [i | i <- [1 .. nrows tab], i /= row]
+      pivot = getElem row col tab
+      scaledRowTab = scaleRow (1 / pivot) row tab
+   in foldl (updateTableauRow coords) scaledRowTab targetRows
 
-updateSimplexStateTest :: Maybe SimplexState
-updateSimplexStateTest =
-  do
-    let state@(SimplexState tab _) = initSimplexState testInst
-    pivotCol <- findPivotColumnIndex tab
-    pivotRow <- findPivotRowIndex state pivotCol
-    return $ updateSimplexState state (pivotCol, pivotRow)
+-- | Given pivot's coordinates (column, row),
+--   performs pivoting, updating the state accordingly.
+pivotAt :: (Int, Int) -> SimplexM ()
+pivotAt coords@(col, row) = do
+  state@(SimplexState tab basicColsIdxs _) <- get
+  put $
+    state
+      { tableau = updateTableau tab coords,
+        basicColsIndices = basicColsIdxs V.// [(row - 1, col)]
+      }
+
+pivotAtTest :: Maybe SimplexState
+pivotAtTest = do
+  pivotCol <- findPivotColumnIndex (tableau testInstInitState)
+  pivotRow <- findPivotRowIndex testInstInitState pivotCol
+  return $ execState (pivotAt (pivotCol, pivotRow)) testInstInitState
 
 {-
->>> updateSimplexStateTest
-Just Basic Column Indices: [4,5,1]
+>>> pivotAtTest
+Just Status: Running
+Basic Column Indices: [4,5,1]
 ┌                                                                ┐
 │    0 % 1    3 % 4    5 % 2    1 % 1    0 % 1 (-1) % 4   21 % 1 │
 │    0 % 1    3 % 2    4 % 1    0 % 1    1 % 1 (-1) % 2    6 % 1 │
@@ -182,19 +197,106 @@ Just Basic Column Indices: [4,5,1]
 -}
 
 ------------------------------------------------------------------------------------------
+-- Pivoting loop
 
 -- | Implements the main part of the simplex algorithm,
 --   i.e. finding the pivot and updating the tableau
 --   until optimal solution is found.
-simplexSolver :: SimplexState -> SimplexStatus
-simplexSolver state@(SimplexState tab _) =
+pivotLoop :: SimplexM ()
+pivotLoop = do
+  state@(SimplexState tab _ _) <- get
   case findPivotColumnIndex tab of
     -- Nothing => Optimal solution was found
-    Nothing -> StatusOptimal state
+    Nothing -> put $ state {status = Optimal}
     Just pivotCol -> case findPivotRowIndex state pivotCol of
-      -- Nothing => The instance is FeasibleUnbounded
-      Nothing -> StatusUnbounded state
-      Just pivotRow -> simplexSolver $ updateSimplexState state (pivotCol, pivotRow)
+      -- Nothing => The instance is feasible unbounded
+      Nothing -> put $ state {status = Unbounded}
+      Just pivotRow -> do
+        pivotAt (pivotCol, pivotRow)
+        pivotLoop
+
+------------------------------------------------------------------------------------------
+-- Find initial feasible solution
+
+safeTransform :: SimplexM (ThrowsError ())
+safeTransform = do
+  state@(SimplexState tab _ _) <- get
+  let objectiveFunctionVal = (V.last . getLastCol) tab
+
+  case objectiveFunctionVal of
+    0 ->
+
+safeTransform :: SimplexState -> ThrowsError SimplexState
+safeTransform state@(SimplexState tab _ _) =
+  case (V.last . getLastCol) tab of
+    0 -> StatusOptimal . updateLastRow <$> removeX0 state
+    _ -> return (StatusInfeasible state)
+
+{-
+removeX0 :: SimplexState -> ThrowsError SimplexState
+removeX0 (SimplexState tab basicColsIdxs) =
+  -- Throws an error if x_0 is basic,
+  -- since this case is not implemented yet.
+  case V.elemIndex 1 basicColsIdxs of
+    Just _ ->
+      throwError
+        ( NotImplemented
+            ( "InitSimplex found initial feasible solution, but x_0 is basic.\
+              \ This case is not implemented yet.\n"
+                ++ show tab
+                ++ "\n"
+            )
+        )
+    -- SimplexState
+    --   { tableau = minorMatrix (rowIdx + 1) 1 tab,
+    --     basicColsIndices =
+    --       (fmap (subtract 1 . snd) . V.filter ((/= rowIdx) . fst) . V.indexed)
+    --         basicColsIdxs
+    --   }
+    Nothing ->
+      return
+        ( SimplexState
+            { tableau = submatrix 1 (nrows tab) 2 (ncols tab) tab,
+              basicColsIndices = fmap (subtract 1) basicColsIdxs
+            }
+        )
+
+-- | Finds initial feasible solution.
+findInitialSolution :: LPInstance -> ThrowsError SimplexState
+findInitialSolution ins@(LPInstance a b c) =
+  if all (>= 0) b
+    then
+      -- Initial feasible solution exists, optimal might not.
+      (return . StatusOptimal . initSimplexState) ins
+    else
+      let state@(SimplexState tab basicColsIdxs) =
+            -- vecC = -1 : ..., where -1 because initSimplexState negates vecC
+            initSimplexState (ins {matA = fmap (-1 :) a, vecC = -1 : fmap (const 0) c})
+
+          pivotCol = 1
+          -- zip with basicColsIndices to follow Bland's rule
+          pivotRow = 1 + V.minIndex (V.zip ((V.init . getLastCol) tab) basicColsIdxs)
+
+          -- "all (>= 0) b" holds in this state
+          updatedState = updateSimplexState state (pivotCol, pivotRow)
+       in case simplexSolver updatedState of
+            (StatusUnbounded _) ->
+              throwError
+                ( NotImplemented
+                    "InitSimplex initial instance is FeasibleUnbounded.\
+                    \ This case is not implemented yet."
+                )
+            (StatusInfeasible (SimplexState errorTab _)) ->
+              throwError
+                ( LogicError
+                    ( "SimplexSolver returned Infeasible\
+                      \ on initSimplex's initial instance.\
+                      \ This should never happen."
+                        ++ show errorTab
+                    )
+                )
+            (StatusOptimal s) -> safeTransform s
+  where
 
 -- | Finds initial feasible solution.
 initSimplex :: LPInstance -> ThrowsError SimplexStatus
