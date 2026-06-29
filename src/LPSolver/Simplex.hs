@@ -37,7 +37,6 @@ import qualified Data.Vector as V
 import LPSolver.Types
   ( LPInstance (..),
     SimplexError (..),
-    SimplexResult (..),
     SimplexState (..),
     SimplexStatus (..),
     Tableau,
@@ -80,7 +79,8 @@ initSimplexState :: LPInstance -> SimplexState
 initSimplexState (LPInstance a b c) =
   SimplexState
     { tableau = (% 1) <$> (aIdentityC <|> bWithZero),
-      basicColsIndices = basicColsIndices'
+      basicColsIndices = basicColsIndices',
+      status = Running
     }
   where
     aMat = fromLists a
@@ -94,6 +94,7 @@ initSimplexState (LPInstance a b c) =
 
 {-
 >>> initSimplexState testInst
+Status: Running
 Basic Column Indices: [4,5,6]
 ┌                                                                ┐
 │    1 % 1    1 % 1    3 % 1    1 % 1    0 % 1    0 % 1   30 % 1 │
@@ -142,6 +143,7 @@ findPivotTest =
 Just (1,3)
 -}
 
+{-
 ------------------------------------------------------------------------------------------
 
 -- | Given the pivot's coordinates (column, row) performs one tableau update.
@@ -178,23 +180,6 @@ Just Basic Column Indices: [4,5,1]
 │    0 % 1 (-1) % 4 (-1) % 2    0 % 1    0 % 1    3 % 4   27 % 1 │
 └                                                                ┘
 -}
-
-------------------------------------------------------------------------------------------
-
--- | Extracts solution vector [x_1, ..., x_n, objective function] from tableau.
-getSolutionVector :: SimplexState -> V.Vector Rational
-getSolutionVector (SimplexState tab basicColsIdxs) =
-  V.fromList $ fmap step [1 .. ncols tab - 1] ++ [V.last lastCol]
-  where
-    lastCol = getLastCol tab
-
-    step :: Int -> Rational
-    step i = maybe 0 (lastCol V.!) (V.elemIndex i basicColsIdxs)
-
--- | Extracts tableau and solution vector from simplex state,
---   it is expected that optimal solution was found.
-getOptimalSolution :: SimplexState -> SimplexResult
-getOptimalSolution state = Optimal state $ getSolutionVector state
 
 ------------------------------------------------------------------------------------------
 
@@ -313,8 +298,8 @@ Right (StatusOptimal Basic Column Indices: [3,2]
 -}
 
 -- | Simplex algorithm implementation solving the standard maximum problem.
-simplex :: LPInstance -> ThrowsError SimplexResult
-simplex ins =
+simplex' :: LPInstance -> ThrowsError SimplexResult
+simplex' ins =
   initSimplex ins
     >>= ( \case
             (StatusUnbounded (SimplexState errorTab _)) ->
@@ -342,6 +327,10 @@ simplex ins =
           )
       (StatusOptimal s) -> (return . getOptimalSolution) s
 
+-- | Simplex algorithm implementation solving the standard maximum problem.
+simplex :: LPInstance -> ThrowsError SimplexState
+simplex = runState simplex' . initSimplexState
+
 {-
 >>> simplex testInst
 >>> simplex testInst2
@@ -358,4 +347,6 @@ Right Solution Vector: [14 % 9,10 % 9,0 % 1,0 % 1,2 % 1]
 │    0 % 1    1 % 1    1 % 9 (-2) % 9   10 % 9 │
 │    0 % 1    0 % 1    1 % 1    0 % 1    2 % 1 │
 └                                              ┘
+-}
+
 -}

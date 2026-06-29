@@ -5,9 +5,11 @@ module LPSolver.Types where
 import Control.Monad.Error.Class (MonadError (catchError))
 import Data.Matrix (Matrix (..), getCol, getRow)
 import Data.Vector (Vector)
+import qualified Data.Vector as V
 import Text.ParserCombinators.Parsec (ParseError)
 
 ------------------------------------------------------------------------------------------
+-- LPInstance
 
 -- | Linear programming problem instance
 data LPInstance = LPInstance
@@ -27,6 +29,7 @@ instance Show LPInstance where
       ++ show c
 
 ------------------------------------------------------------------------------------------
+-- Tableau
 
 -- | Simplex algorithm tableau
 type Tableau = Matrix Rational
@@ -38,57 +41,77 @@ getLastRow :: Tableau -> Vector Rational
 getLastRow tbl = getRow (nrows tbl) tbl
 
 ------------------------------------------------------------------------------------------
+-- SimplexStatus
+
+-- | Represents the status of the computation at a specific phase
+data SimplexStatus
+  = Running
+  | Infeasible
+  | Unbounded
+  | Optimal
+  deriving (Show)
+
+------------------------------------------------------------------------------------------
+-- SimplexState
 
 -- | Simplex algorithm state, basicColsIndices are indexed from 1.
 data SimplexState = SimplexState
   { tableau :: Tableau,
     -- size basicColsIndices = nrows tableau - 1
     -- basicColsIndices ! i = index of the column of the respective basic variable
-    basicColsIndices :: Vector Int
+    basicColsIndices :: Vector Int,
+    status :: SimplexStatus
   }
 
 instance Show SimplexState where
   show :: SimplexState -> String
-  show (SimplexState tab indices) =
-    "Basic Column Indices: "
+  show (SimplexState tab indices stat) =
+    "Status: "
+      ++ show stat
+      ++ "\n"
+      ++ "Basic Column Indices: "
       ++ show indices
       ++ "\n"
       ++ show tab
 
 ------------------------------------------------------------------------------------------
+-- SimplexM
 
--- | Represents the status of the computation at a specific phase
-data SimplexStatus
-  = StatusUnbounded SimplexState
-  | StatusInfeasible SimplexState
-  | StatusOptimal SimplexState
-  deriving (Show)
-
--- | The result returned to the user
-data SimplexResult
-  = FeasibleUnbounded SimplexState
-  | Infeasible SimplexState
-  | Optimal SimplexState (Vector Rational)
-
-instance Show SimplexResult where
-  show :: SimplexResult -> String
-  show (FeasibleUnbounded (SimplexState tab _)) = "Feasible Unbound\n" ++ show tab
-  show (Infeasible (SimplexState tab _)) = "Infeasible\n" ++ show tab
-  show (Optimal (SimplexState tab _) sol) =
-    "Solution Vector: "
-      ++ show sol
-      ++ "\n"
-      ++ show tab
-
-showCompact :: SimplexResult -> String
-showCompact (FeasibleUnbounded _) = "Feasible Unbound"
-showCompact (Infeasible _) = "Infeasible"
-showCompact (Optimal _ sol) = "Solution Vector: " ++ show sol
+data SimplexM a = State SimplexState a
 
 ------------------------------------------------------------------------------------------
+-- Result printing
 
--- Error handling is inspired by
--- https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
+printCompactResult :: SimplexState -> String
+printCompactResult state = case status state of
+  Running -> "Computation is in progress"
+  Infeasible -> "Infeasible"
+  Unbounded -> "Feasible Unbounded"
+  Optimal -> "Solution Vector: " ++ show (getSolutionVector state)
+
+printResult :: SimplexState -> String
+printResult state = printCompactResult state ++ "\n" ++ show state
+
+-- | Extracts solution vector [x_1, ..., x_n, objective function value] from tableau.
+getSolutionVector :: SimplexState -> V.Vector Rational
+getSolutionVector (SimplexState tab basicColsIdxs _) =
+  V.fromList $ fmap step [1 .. ncols tab - 1] ++ [V.last lastCol]
+  where
+    lastCol = getLastCol tab
+
+    step :: Int -> Rational
+    step i = maybe 0 (lastCol V.!) (V.elemIndex i basicColsIdxs)
+
+{-
+-- | Extracts tableau and solution vector from simplex state,
+--   it is expected that optimal solution was found.
+getOptimalSolution :: SimplexState -> SimplexResult
+getOptimalSolution state = Optimal state $ getSolutionVector state
+-}
+
+------------------------------------------------------------------------------------------
+-- Error handling
+-- inspired by https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
 
 data SimplexError
   = Parser ParseError
@@ -117,5 +140,5 @@ safeExtractString = extractValue . trapError
 safeShowValue :: (Show a) => ThrowsError a -> String
 safeShowValue = safeExtractString . fmap show
 
-safeShowCompactValue :: ThrowsError SimplexResult -> String
-safeShowCompactValue = safeExtractString . fmap showCompact
+safeShowCompactValue :: ThrowsError SimplexState -> String
+safeShowCompactValue = safeExtractString . fmap printCompactResult
