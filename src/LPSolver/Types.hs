@@ -1,9 +1,11 @@
+{-# LANGUAGE DerivingStrategies #-}
+{-# LANGUAGE GeneralizedNewtypeDeriving #-}
 {-# LANGUAGE InstanceSigs #-}
 
 module LPSolver.Types where
 
-import Control.Monad.Error.Class (MonadError (catchError))
-import Control.Monad.State.Strict (State)
+import Control.Monad.Except (ExceptT, MonadError)
+import Control.Monad.State.Strict (MonadState, StateT)
 import Data.Matrix (Matrix (..), getCol, getRow)
 import Data.Vector (Vector)
 import qualified Data.Vector as V
@@ -66,42 +68,38 @@ data SimplexState = SimplexState
 
 instance Show SimplexState where
   show :: SimplexState -> String
-  show (SimplexState tab indices stat) =
-    "Status: "
-      ++ show stat
+  show state =
+    "Result: "
+      ++ showCompact state
       ++ "\n"
       ++ "Basic Column Indices: "
-      ++ show indices
+      ++ show (basicColsIndices state)
       ++ "\n"
-      ++ show tab
-
-------------------------------------------------------------------------------------------
--- SimplexM
-
-type SimplexM a = State SimplexState a
+      ++ show (tableau state)
 
 ------------------------------------------------------------------------------------------
 -- Result printing
 
-printCompactResult :: SimplexState -> String
-printCompactResult state = case status state of
+showCompact :: SimplexState -> String
+showCompact state = case status state of
   Running -> "Computation is in progress"
   Infeasible -> "Infeasible"
   Unbounded -> "Feasible Unbounded"
   Optimal -> "Solution Vector: " ++ show (getSolutionVector state)
 
-printResult :: SimplexState -> String
-printResult state = printCompactResult state ++ "\n" ++ show state
+-- | Extracts objective function value from tableau.
+getObjectiveFunctionValue :: Tableau -> Rational
+getObjectiveFunctionValue tab = V.last $ getLastCol tab
 
 -- | Extracts solution vector [x_1, ..., x_n, objective function value] from tableau.
 getSolutionVector :: SimplexState -> V.Vector Rational
 getSolutionVector (SimplexState tab basicColsIdxs _) =
-  V.fromList $ fmap step [1 .. ncols tab - 1] ++ [V.last lastCol]
+  V.fromList $
+    fmap (step (getLastCol tab)) [1 .. ncols tab - 1]
+      ++ [getObjectiveFunctionValue tab]
   where
-    lastCol = getLastCol tab
-
-    step :: Int -> Rational
-    step i = maybe 0 (lastCol V.!) (V.elemIndex i basicColsIdxs)
+    step :: V.Vector Rational -> Int -> Rational
+    step lastCol i = maybe 0 (lastCol V.!) (V.elemIndex i basicColsIdxs)
 
 {-
 -- | Extracts tableau and solution vector from simplex state,
@@ -112,7 +110,6 @@ getOptimalSolution state = Optimal state $ getSolutionVector state
 
 ------------------------------------------------------------------------------------------
 -- Error handling
--- inspired by https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
 
 data SimplexError
   = Parser ParseError
@@ -120,26 +117,29 @@ data SimplexError
   | LogicError String
   deriving (Show)
 
--- type ThrowsError a = Either SimplexError a
-type ThrowsError = Either SimplexError
-
-trapError :: (MonadError e m, Show e) => m String -> m String
-trapError action = catchError action (return . show)
+type ThrowsError a = Either SimplexError a
 
 -- | Extracts the string or converts the error to a string.
 safeExtractString :: ThrowsError String -> String
-safeExtractString = extractValue . trapError
-  where
-    -- https://en.wikibooks.org/wiki/Write_Yourself_a_Scheme_in_48_Hours
-    -- "We purposely leave extractValue undefined for a Left constructor,
-    -- because that represents a programmer error."
-    extractValue :: ThrowsError b -> b
-    extractValue (Right val) = val
-    extractValue (Left _) = undefined
+safeExtractString = either show id
 
--- | Extracts the value as a string using Show or converts the error to string.
+-- | Extracts the value as a string using show or converts the error to string.
 safeShowValue :: (Show a) => ThrowsError a -> String
 safeShowValue = safeExtractString . fmap show
 
+-- | Extracts the value as a string using showCompact or converts the error to string.
 safeShowCompactValue :: ThrowsError SimplexState -> String
-safeShowCompactValue = safeExtractString . fmap printCompactResult
+safeShowCompactValue = safeExtractString . fmap showCompact
+
+------------------------------------------------------------------------------------------
+-- SimplexM
+
+newtype SimplexM m a
+  = SimplexM {runSimplexM :: ExceptT SimplexError (StateT SimplexState m) a}
+  deriving newtype
+    ( Functor,
+      Applicative,
+      Monad,
+      MonadState SimplexState,
+      MonadError SimplexError
+    )
