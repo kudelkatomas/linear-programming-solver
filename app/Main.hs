@@ -1,6 +1,8 @@
+{-# OPTIONS_GHC -Wno-unused-imports #-}
+
 module Main where
 
-import Data.Functor.Identity
+import Data.Functor.Identity (Identity (runIdentity))
 import Data.List (partition)
 import LPSolver.Parser (readLPInstances)
 import LPSolver.Simplex (simplex)
@@ -12,6 +14,7 @@ import LPSolver.Types
     safeExtractString,
     safeShowCompactValue,
     safeShowValue,
+    showCompact,
   )
 import System.Environment (getArgs)
 import System.Exit (exitFailure, exitSuccess)
@@ -34,8 +37,8 @@ main = do
 
       input <- readInput args
       instances <- parseInstances input
-
-      (writeOutput isVerbose . solveInstances) input
+      let results = solveInstances instances
+      printOutputs isVerbose $ zip instances results
 
 ------------------------------------------------------------------------------------------
 ------------------------------------------------------------------------------------------
@@ -65,31 +68,16 @@ parseInstances input = case readLPInstances input of
 solveInstances :: [LPInstance] -> [(ThrowsError (), SimplexState)]
 solveInstances = fmap (runIdentity . simplex)
 
-formatResult :: Bool -> (LPInstance, (ThrowsError (), SimplexState)) -> String
-formatResult isVerbose (ins, (result, finalState)) = undefined
+formatOutput :: Bool -> (LPInstance, (ThrowsError (), SimplexState)) -> String
+formatOutput isVerbose (ins, (result, finalState)) =
+  case result of
+    Left err -> show err
+    Right _ ->
+      let printer = if isVerbose then show else showCompact
+       in "{\n" ++ show ins ++ "\n" ++ printer finalState ++ "\n}"
 
-writeOutput :: Bool -> [(ThrowsError (), SimplexState)] -> String
-writeOutput isVerbose results = undefined
-
-{-
-  where
-    solveInstances :: String -> ThrowsError [(LPInstance, ThrowsError SimplexResult)]
-    solveInstances input = do
-      instances <- readLPInstances input
-      let results = fmap simplex instances
-      return $ zip instances results
-
-    writeOutput :: Bool -> ThrowsError [(LPInstance, ThrowsError SimplexResult)] -> IO ()
-    writeOutput isVerbose =
-      putStr
-        . safeExtractString
-        . fmap (concatMap (formatSolution isVerbose))
-
-    formatSolution :: Bool -> (LPInstance, ThrowsError SimplexResult) -> String
-    formatSolution isVerbose (ins, res) =
-      let showRes = if isVerbose then safeShowValue else safeShowCompactValue
-       in "{\n" ++ show ins ++ "\n" ++ showRes res ++ "\n}\n"
--}
+printOutputs :: Bool -> [(LPInstance, (ThrowsError (), SimplexState))] -> IO ()
+printOutputs isVerbose = mapM_ (putStrLn . formatOutput isVerbose)
 
 ------------------------------------------------------------------------------------------
 -- Help message
@@ -110,8 +98,8 @@ printHelp =
         "  -v, --verbose    Prints the final tableau for every result",
         "",
         "Examples:",
-        "  cabal run lp-solver -- \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]], [b_1, ..., b_m], [c_1, ..., c_n]} ... {...}\"",
+        "  cabal run lp-solver -- \"{[[a_11, ..., a_1n], ..., [a_m1, ..., a_mn]], [b_1, ..., b_m], [c_1, ..., c_n]} ... {...}\" ... \"{...} ... {...}\"",
         "  cat input.txt | cabal run lp-solver",
         "  cat input.txt | cabal run lp-solver > output.txt",
-        "  cat input.txt | cabal run lp-solver -- -v \"{[[a_11, ..., a_1n], ...]} ... {...}\" > output.txt"
+        "  cat input.txt | cabal run lp-solver -- -v \"{...} ... {...}\" ... \"{...} ... {...}\" > output.txt"
       ]
