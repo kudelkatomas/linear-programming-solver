@@ -1,6 +1,6 @@
 {-# LANGUAGE FlexibleContexts #-}
 
-module LPSolver.Simplex where
+module LPSolver.Simplex (simplex) where
 
 import Control.Monad.Except (MonadError (throwError), runExceptT)
 import Control.Monad.State.Strict (MonadState, StateT (..), get, modify', put)

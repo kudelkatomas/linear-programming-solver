@@ -1,4 +1,4 @@
-module LPSolver.Parser where
+module LPSolver.Parser (readLPInstances) where
 
 import Control.Monad.Except (MonadError (throwError))
 import LPSolver.Types (LPInstance (..), SimplexError (..), ThrowsError)
@@ -104,6 +104,7 @@ parseLPInstances = do
 
 ------------------------------------------------------------------------------------------
 
+-- | Tries to parse 'LPInstance's from a string.
 readLPInstances :: String -> ThrowsError [LPInstance]
 readLPInstances input = case parse parseLPInstances "simplex" input of
   Left err -> throwError $ Parser err
