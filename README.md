@@ -68,6 +68,8 @@ Piping input and saving the verbose outputs:
 cat input.txt | cabal run lp-solver -- -v > output.txt
 ```
 
+---
+
 ## Input File Format
 
 Input files can contain multiple linear programming instances. Each instance must be enclosed in curly braces {} containing three comma-separated elements:
@@ -92,12 +94,16 @@ You can format them using whitespace/newlines for readability, or write them com
 {[[-3, 81],[93, 21]],[72, 56],[39, 20]}
 ```
 
+---
+
 ## Technical Specifications & Current Limitations
 * **Standard Maximization Focus**: The tool directly maximizes $c^T x$ subject to $Ax \le b$ and $x \ge 0$.
 
 * **Status Flags**: Evaluation yields one of four outcomes: Running, Infeasible, Feasible Unbounded, or Optimal (which returns the solution vector, with its final component being the objective function value).
 
 * **Known Limitations**: While initSimplexAndSolve handles basic transformation scenarios, certain edge cases (such as when the artificial variable $x_0$ remains in the basis) raise a NotImplemented error.
+
+---
 
 ## Testing
 
@@ -107,6 +113,8 @@ To generate a batch of 10 test instances:
 ```bash
 python test_case_generator.py 10
 ```
+
+---
 
 ## Acknowledgments
 
